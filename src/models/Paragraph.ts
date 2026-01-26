@@ -1,0 +1,47 @@
+import mongoose, { Schema, type HydratedDocument } from "mongoose";
+
+export type Difficulty = "easy" | "intermediate" | "hard";
+export type Language = "english" | "marathi";
+export type Category = "lessons" | "court-exam" | "mpsc";
+
+export type IParagraph = {
+  title: string;
+  description: string;
+  difficulty: Difficulty;
+  isFree: boolean;
+  language: Language;
+  category: Category;
+  solvedCount: number;
+  text: string;
+  createdAt: Date;
+};
+
+export type ParagraphDocument = HydratedDocument<IParagraph>;
+
+const paragraphSchema = new Schema<IParagraph>({
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  difficulty: {
+    type: String,
+    required: true,
+    enum: ["easy", "intermediate", "hard"]
+  },
+  isFree: { type: Boolean, required: true, default: true },
+  language: {
+    type: String,
+    required: true,
+    enum: ["english", "marathi"]
+  },
+  category: {
+    type: String,
+    required: true,
+    enum: ["lessons", "court-exam", "mpsc"]
+  },
+  solvedCount: { type: Number, default: 0 },
+  text: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Paragraph = mongoose.model<IParagraph>("Paragraph", paragraphSchema);
+
+export default Paragraph;
