@@ -117,22 +117,30 @@ mongoose.connection.on("reconnected", () => {
 });
 
 // Graceful shutdown handlers
-const gracefulShutdown = (signal: string) => {
+const gracefulShutdown = async (signal: string) => {
   console.log(`Received ${signal}, shutting down gracefully...`);
   
   if (server) {
-    server.close(() => {
+    server.close(async () => {
       console.log("HTTP server closed");
-      mongoose.connection.close(false, () => {
+      try {
+        await mongoose.connection.close();
         console.log("MongoDB connection closed");
         process.exit(0);
-      });
+      } catch (error) {
+        console.error("Error closing MongoDB connection:", error);
+        process.exit(1);
+      }
     });
   } else {
-    mongoose.connection.close(false, () => {
+    try {
+      await mongoose.connection.close();
       console.log("MongoDB connection closed");
       process.exit(0);
-    });
+    } catch (error) {
+      console.error("Error closing MongoDB connection:", error);
+      process.exit(1);
+    }
   }
   
   // Force exit after 10 seconds
