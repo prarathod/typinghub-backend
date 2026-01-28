@@ -223,7 +223,8 @@ router.post("/paragraphs", requireAdmin, async (req: Request, res: Response) => 
       language: body.language as "english" | "marathi",
       category: body.category as Category,
       text: String(body.text),
-      solvedCount: 0
+      solvedCount: 0,
+      published: body.published !== undefined ? Boolean(body.published) : false
     });
 
     res.status(201).json(paragraph.toObject());
@@ -249,6 +250,7 @@ router.put("/paragraphs/:id", requireAdmin, async (req: Request, res: Response) 
     if (body.language !== undefined) update.language = body.language;
     if (body.category !== undefined) update.category = body.category;
     if (body.text !== undefined) update.text = String(body.text);
+    if (body.published !== undefined) update.published = Boolean(body.published);
 
     const paragraph = await Paragraph.findByIdAndUpdate(id, update, { new: true }).lean();
     if (!paragraph) {

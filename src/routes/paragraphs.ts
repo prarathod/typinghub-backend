@@ -50,24 +50,24 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
       });
     }
 
-    const filter: { language: string; category?: Category; isFree?: boolean; difficulty?: Difficulty } = { language };
-    if (category) {
-      filter.category = category as Category;
-    }
-    if (price === "free") filter.isFree = true;
-    else if (price === "paid") filter.isFree = false;
-    if (difficulty && difficulty !== "all") {
-      filter.difficulty = difficulty as Difficulty;
-    }
+    const filter = {
+      language,
+      $or: [{ published: true }, { published: { $exists: false } }],
+      ...(category && { category: category as Category }),
+      ...(price === "free" && { isFree: true }),
+      ...(price === "paid" && { isFree: false }),
+      ...(difficulty && difficulty !== "all" && { difficulty: difficulty as Difficulty })
+    };
 
+    const queryFilter = filter as unknown as Parameters<typeof Paragraph.find>[0];
     const [rawItems, total, solvedIds] = await Promise.all([
-      Paragraph.find(filter)
+      Paragraph.find(queryFilter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select("-text")
         .lean(),
-      Paragraph.countDocuments(filter),
+      Paragraph.countDocuments(queryFilter),
       (async () => {
         const uid = (req.user as UserDocument | undefined)?._id;
         if (!uid) return new Set<string>();
@@ -105,7 +105,10 @@ router.get("/:id", async (req: Request, res: Response) => {
     if (!id || !mongoose.isValidObjectId(id)) {
       return res.status(400).json({ message: "Invalid paragraph ID." });
     }
-    const paragraph = await Paragraph.findById(id).lean();
+    const paragraph = await Paragraph.findOne({
+      _id: id,
+      $or: [{ published: true }, { published: { $exists: false } }]
+    }).lean();
     if (!paragraph) {
       return res.status(404).json({ message: "Paragraph not found." });
     }
@@ -129,7 +132,10 @@ router.get(
       if (!id || !mongoose.isValidObjectId(id)) {
         return res.status(400).json({ message: "Invalid paragraph ID." });
       }
-      const paragraph = await Paragraph.findById(id).lean();
+      const paragraph = await Paragraph.findOne({
+        _id: id,
+        $or: [{ published: true }, { published: { $exists: false } }]
+      }).lean();
       if (!paragraph) {
         return res.status(404).json({ message: "Paragraph not found." });
       }
@@ -208,7 +214,10 @@ router.get(
       if (!id || !mongoose.isValidObjectId(id)) {
         return res.status(400).json({ message: "Invalid paragraph ID." });
       }
-      const paragraph = await Paragraph.findById(id).lean();
+      const paragraph = await Paragraph.findOne({
+        _id: id,
+        $or: [{ published: true }, { published: { $exists: false } }]
+      }).lean();
       if (!paragraph) {
         return res.status(404).json({ message: "Paragraph not found." });
       }
@@ -265,7 +274,10 @@ router.post(
       if (!id || !mongoose.isValidObjectId(id)) {
         return res.status(400).json({ message: "Invalid paragraph ID." });
       }
-      const paragraph = await Paragraph.findById(id).lean();
+      const paragraph = await Paragraph.findOne({
+        _id: id,
+        $or: [{ published: true }, { published: { $exists: false } }]
+      }).lean();
       if (!paragraph) {
         return res.status(404).json({ message: "Paragraph not found." });
       }

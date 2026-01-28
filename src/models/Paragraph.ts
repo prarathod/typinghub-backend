@@ -13,6 +13,7 @@ export type IParagraph = {
   category: Category;
   solvedCount: number;
   text: string;
+  published: boolean;
   createdAt: Date;
 };
 
@@ -39,6 +40,7 @@ const paragraphSchema = new Schema<IParagraph>({
   },
   solvedCount: { type: Number, default: 0 },
   text: { type: String, required: true },
+  published: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
