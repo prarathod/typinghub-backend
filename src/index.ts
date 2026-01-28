@@ -30,23 +30,11 @@ process.on("uncaughtException", (error: Error) => {
 
 const app = express();
 
-// Support multiple origins (for Vercel deployment)
-// CLIENT_URL can be a single URL or comma-separated list
-const allowedOrigins = env.CLIENT_URL.includes(",")
-  ? env.CLIENT_URL.split(",").map((url) => url.trim())
-  : [env.CLIENT_URL.trim()];
-
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
+      // Allow all origins (including requests with no origin like mobile apps or curl)
+      callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -95,13 +83,42 @@ app.use((_req, res) => {
 });
 
 // Global error handler middleware - MUST be last
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("Express error handler:", err);
-  res.status(500).json({
-    message: "Internal server error",
-    ...(env.NODE_ENV === "development" && { error: err.message, stack: err.stack })
-  });
-});
+app.use(
+  (
+    err: Error & { statusCode?: number },
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error("Express error handler:", err);
+
+    // Allow routes or libraries to set a specific HTTP status code
+    const statusCode =
+      typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode < 600
+        ? err.statusCode
+        : 500;
+
+    const isProd = env.NODE_ENV === "production";
+
+    res.status(statusCode).json({
+      success: false,
+      message:
+        statusCode === 500
+          ? "Something went wrong. Please try again later."
+          : err.message || "Request failed.",
+      // In non‑production, include useful debugging info
+      ...(isProd
+        ? {}
+        : {
+            error: {
+              name: err.name,
+              message: err.message,
+              stack: err.stack
+            }
+          })
+    });
+  }
+);
 
 // MongoDB connection error handlers
 mongoose.connection.on("error", (error) => {
