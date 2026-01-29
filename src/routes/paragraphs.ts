@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 
 import { optionalAuth, requireAuth } from "../middleware/auth";
-import Paragraph, { type Category, type Difficulty } from "../models/Paragraph";
+import Paragraph, { type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
 import type { UserDocument } from "../models/User";
 
@@ -10,7 +10,6 @@ const router = Router();
 const LANGUAGE_VALUES = ["english", "marathi"] as const;
 const CATEGORY_VALUES = ["lessons", "court-exam", "mpsc"] as const;
 const PRICE_VALUES = ["all", "free", "paid"] as const;
-const DIFFICULTY_VALUES = ["easy", "intermediate", "hard"] as const;
 const MAX_LIMIT = 24;
 const DEFAULT_LIMIT = 12;
 
@@ -19,7 +18,6 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
     const language = req.query.language as string | undefined;
     const category = req.query.category as string | undefined;
     const price = req.query.price as string | undefined;
-    const difficulty = req.query.difficulty as string | undefined;
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
     const limit = Math.min(
       MAX_LIMIT,
@@ -44,19 +42,12 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
       });
     }
 
-    if (difficulty && difficulty !== "all" && !DIFFICULTY_VALUES.includes(difficulty as (typeof DIFFICULTY_VALUES)[number])) {
-      return res.status(400).json({
-        message: "Invalid 'difficulty' query. Use 'all', 'easy', 'intermediate', or 'hard'."
-      });
-    }
-
     const filter = {
       language,
       $or: [{ published: true }, { published: { $exists: false } }],
       ...(category && { category: category as Category }),
       ...(price === "free" && { isFree: true }),
-      ...(price === "paid" && { isFree: false }),
-      ...(difficulty && difficulty !== "all" && { difficulty: difficulty as Difficulty })
+      ...(price === "paid" && { isFree: false })
     };
 
     const queryFilter = filter as unknown as Parameters<typeof Paragraph.find>[0];

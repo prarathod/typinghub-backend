@@ -9,8 +9,6 @@ type Category = "lessons" | "court-exam" | "mpsc";
 
 const ENGLISH_PARAGRAPHS: Array<{
   title: string;
-  description: string;
-  difficulty: "easy" | "intermediate" | "hard";
   isFree: boolean;
   language: "english";
   category: Category;
@@ -19,8 +17,6 @@ const ENGLISH_PARAGRAPHS: Array<{
 }> = [
   {
     title: "The Quick Brown Fox",
-    description: "Classic pangram for warming up. Good for beginners.",
-    difficulty: "easy",
     isFree: true,
     language: "english",
     category: "lessons",
@@ -29,8 +25,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Government Exam Basics",
-    description: "Short passage on Indian governance. Useful for SSC typing tests.",
-    difficulty: "easy",
     isFree: true,
     language: "english",
     category: "court-exam",
@@ -39,8 +33,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Maharashtra State GK",
-    description: "Facts about Maharashtra. Relevant for state-level exams.",
-    difficulty: "intermediate",
     isFree: true,
     language: "english",
     category: "lessons",
@@ -49,8 +41,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Current Affairs Summary",
-    description: "Recent events and policies. Helps with descriptive typing.",
-    difficulty: "intermediate",
     isFree: false,
     language: "english",
     category: "mpsc",
@@ -59,8 +49,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Economic Development",
-    description: "Concepts in Indian economy. For competitive exam preparation.",
-    difficulty: "intermediate",
     isFree: true,
     language: "english",
     category: "mpsc",
@@ -69,8 +57,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Advanced Comprehension",
-    description: "Longer passage with complex sentences. For experienced typists.",
-    difficulty: "hard",
     isFree: false,
     language: "english",
     category: "mpsc",
@@ -79,8 +65,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Paragraph Practice One",
-    description: "Simple sentences for daily practice. Ideal for building speed.",
-    difficulty: "easy",
     isFree: true,
     language: "english",
     category: "lessons",
@@ -89,8 +73,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Paragraph Practice Two",
-    description: "Mixed difficulty sentences. Tests consistency.",
-    difficulty: "intermediate",
     isFree: true,
     language: "english",
     category: "lessons",
@@ -99,8 +81,6 @@ const ENGLISH_PARAGRAPHS: Array<{
   },
   {
     title: "Premium Passage",
-    description: "Expert-level passage. Paid content for advanced learners.",
-    difficulty: "hard",
     isFree: false,
     language: "english",
     category: "court-exam",

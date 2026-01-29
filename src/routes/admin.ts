@@ -2,14 +2,14 @@ import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 
 import { requireAdmin } from "../middleware/adminAuth";
-import Paragraph, { type Category, type Difficulty } from "../models/Paragraph";
+import Paragraph, { type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
 import User from "../models/User";
 import { signAdminToken } from "../utils/adminJwt";
 
 const router = Router();
 const ADMIN_USERNAME = "tph-pr-admin";
-const ADMIN_PASSWORD = "tph-pr-16";
+const ADMIN_PASSWORD = "git ";
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
 
@@ -163,12 +163,10 @@ router.get("/paragraphs", requireAdmin, async (req: Request, res: Response) => {
     );
     const language = req.query.language as string | undefined;
     const category = req.query.category as string | undefined;
-    const difficulty = req.query.difficulty as string | undefined;
 
     const filter: Record<string, unknown> = {};
     if (language) filter.language = language;
     if (category) filter.category = category;
-    if (difficulty) filter.difficulty = difficulty;
 
     const [items, total] = await Promise.all([
       Paragraph.find(filter)
@@ -208,7 +206,7 @@ router.get("/paragraphs/:id", requireAdmin, async (req: Request, res: Response) 
 router.post("/paragraphs", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
-    const required = ["title", "description", "difficulty", "isFree", "language", "category", "text"];
+    const required = ["title", "isFree", "language", "category", "text"];
     for (const key of required) {
       if (body[key] === undefined || body[key] === null) {
         return res.status(400).json({ message: `Missing required field: ${key}` });
@@ -217,8 +215,6 @@ router.post("/paragraphs", requireAdmin, async (req: Request, res: Response) => 
 
     const paragraph = await Paragraph.create({
       title: String(body.title),
-      description: String(body.description),
-      difficulty: body.difficulty as Difficulty,
       isFree: Boolean(body.isFree),
       language: body.language as "english" | "marathi",
       category: body.category as Category,
@@ -244,8 +240,6 @@ router.put("/paragraphs/:id", requireAdmin, async (req: Request, res: Response) 
     const body = req.body as Record<string, unknown>;
     const update: Record<string, unknown> = {};
     if (body.title !== undefined) update.title = String(body.title);
-    if (body.description !== undefined) update.description = String(body.description);
-    if (body.difficulty !== undefined) update.difficulty = body.difficulty;
     if (body.isFree !== undefined) update.isFree = Boolean(body.isFree);
     if (body.language !== undefined) update.language = body.language;
     if (body.category !== undefined) update.category = body.category;
