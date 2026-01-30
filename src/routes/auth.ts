@@ -2,11 +2,14 @@ import { Router } from "express";
 import passport from "passport";
 
 import { env } from "../config/env";
+import { PRODUCTS } from "../config/products";
 import { requireAuth } from "../middleware/auth";
-import { signToken } from "../utils/jwt";
+import Subscription from "../models/Subscription";
 import type { UserDocument } from "../models/User";
+import { signToken } from "../utils/jwt";
 
 const router = Router();
+const ALL_PRODUCT_IDS = PRODUCTS.map((p) => p.productId);
 
 router.get(
   "/google",
@@ -42,8 +45,15 @@ router.get(
   }
 );
 
-router.get("/me", requireAuth, (req, res) => {
+router.get("/me", requireAuth, async (req, res) => {
   const user = req.user as UserDocument;
+  const subscriptions = await Subscription.find({ userId: user._id })
+    .select("productId")
+    .lean();
+  let subscriptionIds = subscriptions.map((s) => s.productId as string);
+  if (user.isPaid && subscriptionIds.length === 0) {
+    subscriptionIds = [...ALL_PRODUCT_IDS];
+  }
   res.json({
     user: {
       id: user._id.toString(),
@@ -51,7 +61,8 @@ router.get("/me", requireAuth, (req, res) => {
       email: user.email,
       avatarUrl: user.avatarUrl,
       isPaid: user.isPaid
-    }
+    },
+    subscriptions: subscriptionIds
   });
 });
 

@@ -1,10 +1,32 @@
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 
+import { getProductIdForParagraph } from "../config/products";
 import { optionalAuth, requireAuth } from "../middleware/auth";
 import Paragraph, { type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
+import Subscription from "../models/Subscription";
 import type { UserDocument } from "../models/User";
+
+async function userHasAccessToParagraph(
+  userId: mongoose.Types.ObjectId,
+  isPaidUser: boolean,
+  paragraph: { isFree: boolean; language: string; category: string }
+): Promise<boolean> {
+  if (paragraph.isFree) return true;
+  const productId = getProductIdForParagraph(
+    paragraph.language as "english" | "marathi",
+    paragraph.category as Category
+  );
+  if (!productId) return false;
+  const sub = await Subscription.findOne({ userId, productId }).lean();
+  if (sub) return true;
+  if (isPaidUser) {
+    const count = await Subscription.countDocuments({ userId });
+    if (count === 0) return true;
+  }
+  return false;
+}
 
 const router = Router();
 const LANGUAGE_VALUES = ["english", "marathi"] as const;
@@ -12,11 +34,41 @@ const CATEGORY_VALUES = ["lessons", "court-exam", "mpsc"] as const;
 const PRICE_VALUES = ["all", "free", "paid"] as const;
 const MAX_LIMIT = 24;
 const DEFAULT_LIMIT = 12;
+const LESSONS_FETCH_CAP = 500;
+
+/** Parse "Lesson X.Y" or "X.Y" from title for natural sort. Returns [major, minor]; non-matching get [Infinity, Infinity]. */
+function getLessonSortKey(title: string): [number, number] {
+  const match =
+    title.match(/(?:Lesson\s*)?(\d+)(?:\.(\d+))?/i) ?? title.match(/(\d+)\.(\d+)/);
+  if (match) {
+    const major = parseInt(match[1], 10);
+    const minor = match[2] ? parseInt(match[2], 10) : 0;
+    return [major, minor];
+  }
+  return [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+}
+
+function lessonOrderComparator(
+  a: { title: string },
+  b: { title: string }
+): number {
+  const [aMajor, aMinor] = getLessonSortKey(a.title);
+  const [bMajor, bMinor] = getLessonSortKey(b.title);
+  if (aMajor !== bMajor) return aMajor - bMajor;
+  if (aMinor !== bMinor) return aMinor - bMinor;
+  return a.title.localeCompare(b.title);
+}
 
 router.get("/", optionalAuth, async (req: Request, res: Response) => {
   try {
+    const rawCategory = req.query.category;
+    const category = typeof rawCategory === "string"
+      ? rawCategory.trim().toLowerCase()
+      : Array.isArray(rawCategory) && rawCategory.length > 0
+        ? String(rawCategory[0]).trim().toLowerCase()
+        : undefined;
+
     const language = req.query.language as string | undefined;
-    const category = req.query.category as string | undefined;
     const price = req.query.price as string | undefined;
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
     const limit = Math.min(
@@ -51,13 +103,29 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
     };
 
     const queryFilter = filter as unknown as Parameters<typeof Paragraph.find>[0];
+    const isLessons = category === "lessons";
+
+    type LeanItem = Record<string, unknown> & { _id: unknown; title: string };
     const [rawItems, total, solvedIds] = await Promise.all([
-      Paragraph.find(queryFilter)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .select("-text")
-        .lean(),
+      (async (): Promise<LeanItem[]> => {
+        if (isLessons) {
+          const all = await Paragraph.find(queryFilter)
+            .select("-text")
+            .limit(LESSONS_FETCH_CAP)
+            .lean();
+          const list = all as LeanItem[];
+          list.sort(lessonOrderComparator);
+          const start = (page - 1) * limit;
+          return list.slice(start, start + limit);
+        }
+        const list = await Paragraph.find(queryFilter)
+          .sort({ title: 1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .select("-text")
+          .lean();
+        return list as LeanItem[];
+      })(),
       Paragraph.countDocuments(queryFilter),
       (async () => {
         const uid = (req.user as UserDocument | undefined)?._id;
@@ -90,7 +158,7 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (!id || !mongoose.isValidObjectId(id)) {
@@ -102,6 +170,20 @@ router.get("/:id", async (req: Request, res: Response) => {
     }).lean();
     if (!paragraph) {
       return res.status(404).json({ message: "Paragraph not found." });
+    }
+    if (!paragraph.isFree) {
+      const user = req.user as UserDocument | undefined;
+      if (!user) {
+        return res.status(403).json({
+          message: "Sign in to access this passage."
+        });
+      }
+      const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph);
+      if (!hasAccess) {
+        return res.status(403).json({
+          message: "Upgrade to access this passage."
+        });
+      }
     }
     res.json(paragraph);
   } catch (err) {
@@ -271,6 +353,20 @@ router.post(
       }).lean();
       if (!paragraph) {
         return res.status(404).json({ message: "Paragraph not found." });
+      }
+      if (!paragraph.isFree) {
+        const user = req.user as UserDocument | undefined;
+        if (!user) {
+          return res.status(403).json({
+            message: "Sign in to access this passage."
+          });
+        }
+        const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph);
+        if (!hasAccess) {
+          return res.status(403).json({
+            message: "Upgrade to access this passage."
+          });
+        }
       }
 
       const body = req.body as Record<string, unknown>;

@@ -170,7 +170,7 @@ router.get("/paragraphs", requireAdmin, async (req: Request, res: Response) => {
 
     const [items, total] = await Promise.all([
       Paragraph.find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ title: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
