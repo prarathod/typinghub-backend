@@ -30,11 +30,23 @@ process.on("uncaughtException", (error: Error) => {
 
 const app = express();
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000",
+  env.CLIENT_URL,
+  env.CLIENT_URL.replace(/\/$/, "")
+].filter(Boolean);
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow all origins (including requests with no origin like mobile apps or curl)
-      callback(null, true);
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin || true);
+      } else {
+        callback(null, origin);
+      }
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

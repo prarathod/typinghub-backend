@@ -18,7 +18,7 @@ async function userHasAccessToParagraph(
     paragraph.language as "english" | "marathi",
     paragraph.category as Category
   );
-  if (!productId) return false;
+  if (!productId) return true;
   const sub = await Subscription.findOne({ userId, productId }).lean();
   if (sub) return true;
   if (isPaidUser) {

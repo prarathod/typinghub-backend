@@ -5,8 +5,7 @@ export type ProductId =
   | "english-court"
   | "english-mpsc"
   | "marathi-court"
-  | "marathi-mpsc"
-  | "lessons";
+  | "marathi-mpsc";
 
 export type Product = {
   productId: ProductId;
@@ -44,12 +43,6 @@ export const PRODUCTS: Product[] = [
     amountPaise: 6000,
     language: "marathi",
     category: "mpsc"
-  },
-  {
-    productId: "lessons",
-    name: "Typing Lessons",
-    amountPaise: 7900,
-    category: "lessons"
   }
 ];
 
@@ -63,7 +56,7 @@ export function getProductIdForParagraph(
   language: Language,
   category: Category
 ): ProductId | null {
-  if (category === "lessons") return "lessons";
+  if (category === "lessons") return null;
   const key = `${language}-${category}` as const;
   const map: Record<string, ProductId> = {
     "english-court-exam": "english-court",
@@ -74,12 +67,11 @@ export function getProductIdForParagraph(
   return map[key] ?? null;
 }
 
-/** Fixed bundle total in paise. 1 course = use full price (no override). 2 = ₹150, 3 = ₹220, 4 = ₹280, 5 = ₹330. */
+/** Fixed bundle total in paise. 1 course = use full price (no override). 2 = ₹150, 3 = ₹220, 4 = ₹280. */
 const BUNDLE_TOTAL_PAISE: Record<number, number | undefined> = {
   2: 15000,
   3: 22000,
-  4: 28000,
-  5: 33000
+  4: 28000
 };
 
 export function getBundleAmountPaise(productIds: string[]): number {
@@ -95,7 +87,7 @@ export function getBundleAmountPaise(productIds: string[]): number {
 }
 
 export function getBundleRules(): { count: number; amountPaise: number }[] {
-  return [2, 3, 4, 5].map((count) => ({
+  return [2, 3, 4].map((count) => ({
     count,
     amountPaise: BUNDLE_TOTAL_PAISE[count] ?? 0
   }));

@@ -8,8 +8,8 @@ import User from "../models/User";
 import { signAdminToken } from "../utils/adminJwt";
 
 const router = Router();
-const ADMIN_USERNAME = "tph-pr-admin";
-const ADMIN_PASSWORD = "git ";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? "tph-pr-admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "tph-admin-2024";
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
 
