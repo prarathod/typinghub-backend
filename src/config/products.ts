@@ -19,28 +19,28 @@ export const PRODUCTS: Product[] = [
   {
     productId: "english-court",
     name: "English Court Typing",
-    amountPaise: 9900,
+    amountPaise: 4900,
     language: "english",
     category: "court-exam"
   },
   {
     productId: "english-mpsc",
     name: "English MPSC Typing Exam",
-    amountPaise: 8000,
+    amountPaise: 4900,
     language: "english",
     category: "mpsc"
   },
   {
     productId: "marathi-court",
     name: "Marathi Court Exam",
-    amountPaise: 7000,
+    amountPaise: 4900,
     language: "marathi",
     category: "court-exam"
   },
   {
     productId: "marathi-mpsc",
     name: "Marathi MPSC Typing Exam",
-    amountPaise: 6000,
+    amountPaise: 4900,
     language: "marathi",
     category: "mpsc"
   }
@@ -67,11 +67,11 @@ export function getProductIdForParagraph(
   return map[key] ?? null;
 }
 
-/** Fixed bundle total in paise. 1 course = use full price (no override). 2 = ₹150, 3 = ₹220, 4 = ₹280. */
+/** Fixed bundle total in paise. 1 course = use full price (no override). 2 = ₹89, 3 = ₹132, 4 = ₹175. */
 const BUNDLE_TOTAL_PAISE: Record<number, number | undefined> = {
-  2: 15000,
-  3: 22000,
-  4: 28000
+  2: 8900,
+  3: 13200,
+  4: 17500
 };
 
 export function getBundleAmountPaise(productIds: string[]): number {
