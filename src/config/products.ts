@@ -19,7 +19,7 @@ export const PRODUCTS: Product[] = [
   {
     productId: "english-court",
     name: "English Court Typing",
-    amountPaise: 4900,
+    amountPaise: 100,
     language: "english",
     category: "court-exam"
   },
