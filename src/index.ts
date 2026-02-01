@@ -30,6 +30,9 @@ process.on("uncaughtException", (error: Error) => {
 
 const app = express();
 
+// Disable ETag so API always returns 200 with body instead of 304 Not Modified
+app.set("etag", false);
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
