@@ -32,8 +32,8 @@ const router = Router();
 const LANGUAGE_VALUES = ["english", "marathi"] as const;
 const CATEGORY_VALUES = ["lessons", "court-exam", "mpsc"] as const;
 const PRICE_VALUES = ["all", "free", "paid"] as const;
-const MAX_LIMIT = 48;
-const DEFAULT_LIMIT = 48;
+const MAX_LIMIT = 24;
+const DEFAULT_LIMIT = 24;
 const LESSONS_FETCH_CAP = 500;
 
 /** Parse "Lesson X.Y" or "X.Y" from title for natural sort. Returns [major, minor]; non-matching get [Infinity, Infinity]. */
