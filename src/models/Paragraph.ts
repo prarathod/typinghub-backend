@@ -8,6 +8,7 @@ export type IParagraph = {
   isFree: boolean;
   language: Language;
   category: Category;
+  order: number;
   solvedCount: number;
   text: string;
   published: boolean;
@@ -29,6 +30,7 @@ const paragraphSchema = new Schema<IParagraph>({
     required: true,
     enum: ["lessons", "court-exam", "mpsc"]
   },
+  order: { type: Number, default: 0 },
   solvedCount: { type: Number, default: 0 },
   text: { type: String, required: true },
   published: { type: Boolean, default: false },

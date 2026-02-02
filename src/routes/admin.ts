@@ -170,7 +170,7 @@ router.get("/paragraphs", requireAdmin, async (req: Request, res: Response) => {
 
     const [items, total] = await Promise.all([
       Paragraph.find(filter)
-        .sort({ title: 1 })
+        .sort({ order: 1, title: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -213,11 +213,16 @@ router.post("/paragraphs", requireAdmin, async (req: Request, res: Response) => 
       }
     }
 
+    const order =
+      typeof body.order === "number" ? body.order : typeof body.order === "string" ? parseInt(String(body.order), 10) : 0;
+    const orderNum = Number.isFinite(order) ? order : 0;
+
     const paragraph = await Paragraph.create({
       title: String(body.title),
       isFree: Boolean(body.isFree),
       language: body.language as "english" | "marathi",
       category: body.category as Category,
+      order: orderNum,
       text: String(body.text),
       solvedCount: 0,
       published: body.published !== undefined ? Boolean(body.published) : false
@@ -243,6 +248,10 @@ router.put("/paragraphs/:id", requireAdmin, async (req: Request, res: Response) 
     if (body.isFree !== undefined) update.isFree = Boolean(body.isFree);
     if (body.language !== undefined) update.language = body.language;
     if (body.category !== undefined) update.category = body.category;
+    if (body.order !== undefined) {
+      const o = typeof body.order === "number" ? body.order : parseInt(String(body.order), 10);
+      update.order = Number.isFinite(o) ? o : 0;
+    }
     if (body.text !== undefined) update.text = String(body.text);
     if (body.published !== undefined) update.published = Boolean(body.published);
 

@@ -36,26 +36,14 @@ const MAX_LIMIT = 24;
 const DEFAULT_LIMIT = 24;
 const LESSONS_FETCH_CAP = 500;
 
-/** Parse "Lesson X.Y" or "X.Y" from title for natural sort. Returns [major, minor]; non-matching get [Infinity, Infinity]. */
-function getLessonSortKey(title: string): [number, number] {
-  const match =
-    title.match(/(?:Lesson\s*)?(\d+)(?:\.(\d+))?/i) ?? title.match(/(\d+)\.(\d+)/);
-  if (match) {
-    const major = parseInt(match[1], 10);
-    const minor = match[2] ? parseInt(match[2], 10) : 0;
-    return [major, minor];
-  }
-  return [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
-}
-
-function lessonOrderComparator(
-  a: { title: string },
-  b: { title: string }
+/** Sort by order (asc), then by title. Used for all categories. */
+function orderThenTitleComparator(
+  a: { order?: number; title: string },
+  b: { order?: number; title: string }
 ): number {
-  const [aMajor, aMinor] = getLessonSortKey(a.title);
-  const [bMajor, bMinor] = getLessonSortKey(b.title);
-  if (aMajor !== bMajor) return aMajor - bMajor;
-  if (aMinor !== bMinor) return aMinor - bMinor;
+  const aOrder = typeof a.order === "number" ? a.order : 0;
+  const bOrder = typeof b.order === "number" ? b.order : 0;
+  if (aOrder !== bOrder) return aOrder - bOrder;
   return a.title.localeCompare(b.title);
 }
 
@@ -103,28 +91,18 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
     };
 
     const queryFilter = filter as unknown as Parameters<typeof Paragraph.find>[0];
-    const isLessons = category === "lessons";
 
-    type LeanItem = Record<string, unknown> & { _id: unknown; title: string };
+    type LeanItem = Record<string, unknown> & { _id: unknown; title: string; order?: number };
     const [rawItems, total, solvedIds] = await Promise.all([
       (async (): Promise<LeanItem[]> => {
-        if (isLessons) {
-          const all = await Paragraph.find(queryFilter)
-            .select("-text")
-            .limit(LESSONS_FETCH_CAP)
-            .lean();
-          const list = all as LeanItem[];
-          list.sort(lessonOrderComparator);
-          const start = (page - 1) * limit;
-          return list.slice(start, start + limit);
-        }
-        const list = await Paragraph.find(queryFilter)
-          .sort({ title: 1 })
-          .skip((page - 1) * limit)
-          .limit(limit)
+        const all = await Paragraph.find(queryFilter)
           .select("-text")
+          .limit(LESSONS_FETCH_CAP)
           .lean();
-        return list as LeanItem[];
+        const list = all as LeanItem[];
+        list.sort(orderThenTitleComparator);
+        const start = (page - 1) * limit;
+        return list.slice(start, start + limit);
       })(),
       Paragraph.countDocuments(queryFilter),
       (async () => {
