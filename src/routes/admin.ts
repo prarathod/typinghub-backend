@@ -1,11 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 
+import { PRODUCTS, type ProductId } from "../config/products";
 import { requireAdmin } from "../middleware/adminAuth";
 import Paragraph, { type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
+import Subscription from "../models/Subscription";
 import User from "../models/User";
 import { signAdminToken } from "../utils/adminJwt";
+
+const ADMIN_GRANT_ORDER_ID = "admin-grant";
 
 const router = Router();
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? "tph-pr-admin";
@@ -135,6 +139,67 @@ router.put("/users/:id", requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
+router.get("/users/:id/subscriptions", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id;
+    const id = typeof rawId === "string" ? rawId : rawId?.[0];
+    if (!id || !mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+    const userId = new mongoose.Types.ObjectId(id);
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const subs = await Subscription.find({ userId }).select("productId razorpayOrderId").lean();
+    const productIds = subs.map((s) => s.productId as string);
+    const adminGrantedProductIds = subs
+      .filter((s) => s.razorpayOrderId === ADMIN_GRANT_ORDER_ID)
+      .map((s) => s.productId as string);
+    res.json({ productIds, adminGrantedProductIds, products: PRODUCTS });
+  } catch (err) {
+    console.error("Admin user subscriptions error:", err);
+    res.status(500).json({ message: "Failed to fetch user subscriptions" });
+  }
+});
+
+router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id;
+    const id = typeof rawId === "string" ? rawId : rawId?.[0];
+    if (!id || !mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+    const userId = new mongoose.Types.ObjectId(id);
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const body = req.body as { productIds?: unknown };
+    const rawIds = Array.isArray(body.productIds) ? body.productIds : [];
+    const productIds = rawIds.filter((id): id is string => typeof id === "string");
+    const validProductIds = PRODUCTS.map((p) => p.productId);
+    const toGrant = [...new Set(productIds.filter((pid) => validProductIds.includes(pid as ProductId)))];
+
+    await Subscription.deleteMany({ userId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
+    for (const productId of toGrant) {
+      const existing = await Subscription.findOne({ userId, productId }).lean();
+      if (!existing) {
+        await Subscription.create({
+          userId,
+          productId: productId as ProductId,
+          razorpayOrderId: ADMIN_GRANT_ORDER_ID
+        });
+      }
+    }
+    const subs = await Subscription.find({ userId }).select("productId").lean();
+    res.json({ productIds: subs.map((s) => s.productId as string) });
+  } catch (err) {
+    console.error("Admin user subscriptions update error:", err);
+    res.status(500).json({ message: "Failed to update user subscriptions" });
+  }
+});
+
 router.delete("/users/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const rawId = req.params.id;
@@ -142,7 +207,9 @@ router.delete("/users/:id", requireAdmin, async (req: Request, res: Response) =>
     if (!id || !mongoose.isValidObjectId(id)) {
       return res.status(400).json({ message: "Invalid user ID" });
     }
-    await Submission.deleteMany({ userId: new mongoose.Types.ObjectId(id) });
+    const userId = new mongoose.Types.ObjectId(id);
+    await Submission.deleteMany({ userId });
+    await Subscription.deleteMany({ userId });
     const user = await User.findByIdAndDelete(id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
