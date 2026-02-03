@@ -3,21 +3,36 @@ import mongoose from "mongoose";
 
 import { getProductIdForParagraph } from "../config/products";
 import { optionalAuth, requireAuth } from "../middleware/auth";
-import Paragraph, { type Category } from "../models/Paragraph";
+import Paragraph, { type AccessType, type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
 import Subscription from "../models/Subscription";
 import type { UserDocument } from "../models/User";
 
+type ParagraphForAccess = {
+  isFree?: boolean;
+  accessType?: AccessType;
+  language: string;
+  category: string;
+};
+
+function getEffectiveAccessType(p: ParagraphForAccess): AccessType {
+  if (p.accessType) return p.accessType;
+  return p.isFree !== false ? "free" : "paid";
+}
+
 async function userHasAccessToParagraph(
-  userId: mongoose.Types.ObjectId,
+  userId: mongoose.Types.ObjectId | null | undefined,
   isPaidUser: boolean,
-  paragraph: { isFree: boolean; language: string; category: string }
+  paragraph: ParagraphForAccess
 ): Promise<boolean> {
-  if (paragraph.isFree) return true;
+  const accessType = getEffectiveAccessType(paragraph);
+  if (accessType === "free") return true;
+  if (accessType === "free-after-login") return !!userId;
   const productId = getProductIdForParagraph(
     paragraph.language as "english" | "marathi",
     paragraph.category as Category
   );
+  if (!userId) return false;
   if (!productId) return true;
   const sub = await Subscription.findOne({ userId, productId }).lean();
   if (sub) return true;
@@ -46,6 +61,8 @@ function orderThenTitleComparator(
   if (aOrder !== bOrder) return aOrder - bOrder;
   return a.title.localeCompare(b.title);
 }
+
+type LeanItem = Record<string, unknown> & { _id: unknown; title: string; order?: number };
 
 router.get("/", optionalAuth, async (req: Request, res: Response) => {
   try {
@@ -89,31 +106,30 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
       ...(price === "free" && { isFree: true }),
       ...(price === "paid" && { isFree: false })
     };
-
     const queryFilter = filter as unknown as Parameters<typeof Paragraph.find>[0];
 
-    type LeanItem = Record<string, unknown> & { _id: unknown; title: string; order?: number };
-    const [rawItems, total, solvedIds] = await Promise.all([
+    const user = req.user as UserDocument | undefined;
+    const [all, total, solvedIds] = await Promise.all([
       (async (): Promise<LeanItem[]> => {
-        const all = await Paragraph.find(queryFilter)
+        const list = await Paragraph.find(queryFilter)
           .select("-text")
           .limit(LESSONS_FETCH_CAP)
           .lean();
-        const list = all as LeanItem[];
-        list.sort(orderThenTitleComparator);
+        const sorted = list as LeanItem[] & { order?: number; title: string }[];
+        sorted.sort(orderThenTitleComparator);
         const start = (page - 1) * limit;
-        return list.slice(start, start + limit);
+        return sorted.slice(start, start + limit);
       })(),
       Paragraph.countDocuments(queryFilter),
       (async () => {
-        const uid = (req.user as UserDocument | undefined)?._id;
+        const uid = user?._id;
         if (!uid) return new Set<string>();
         const ids = await Submission.distinct("paragraphId", { userId: uid });
         return new Set(ids.map((id) => String(id)));
       })()
     ]);
 
-    const items = rawItems.map((it) => {
+    const items = all.map((it) => {
       const item = it as Record<string, unknown> & { _id: unknown };
       return {
         ...item,
@@ -149,14 +165,21 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
     if (!paragraph) {
       return res.status(404).json({ message: "Paragraph not found." });
     }
-    if (!paragraph.isFree) {
-      const user = req.user as UserDocument | undefined;
+    const accessType = getEffectiveAccessType(paragraph as ParagraphForAccess);
+    const user = req.user as UserDocument | undefined;
+    if (accessType === "free-after-login") {
       if (!user) {
         return res.status(403).json({
           message: "Sign in to access this passage."
         });
       }
-      const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph);
+    } else if (accessType === "paid") {
+      if (!user) {
+        return res.status(403).json({
+          message: "Sign in to access this passage."
+        });
+      }
+      const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph as ParagraphForAccess);
       if (!hasAccess) {
         return res.status(403).json({
           message: "Upgrade to access this passage."
@@ -332,14 +355,21 @@ router.post(
       if (!paragraph) {
         return res.status(404).json({ message: "Paragraph not found." });
       }
-      if (!paragraph.isFree) {
-        const user = req.user as UserDocument | undefined;
+      const accessType = getEffectiveAccessType(paragraph as ParagraphForAccess);
+      const user = req.user as UserDocument | undefined;
+      if (accessType === "free-after-login") {
         if (!user) {
           return res.status(403).json({
             message: "Sign in to access this passage."
           });
         }
-        const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph);
+      } else if (accessType === "paid") {
+        if (!user) {
+          return res.status(403).json({
+            message: "Sign in to access this passage."
+          });
+        }
+        const hasAccess = await userHasAccessToParagraph(user._id, user.isPaid === true, paragraph as ParagraphForAccess);
         if (!hasAccess) {
           return res.status(403).json({
             message: "Upgrade to access this passage."

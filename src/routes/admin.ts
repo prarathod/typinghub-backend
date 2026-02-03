@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 import { PRODUCTS, type ProductId } from "../config/products";
 import { requireAdmin } from "../middleware/adminAuth";
-import Paragraph, { type Category } from "../models/Paragraph";
+import Paragraph, { type AccessType, type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
 import Subscription from "../models/Subscription";
 import User from "../models/User";
@@ -284,9 +284,18 @@ router.post("/paragraphs", requireAdmin, async (req: Request, res: Response) => 
       typeof body.order === "number" ? body.order : typeof body.order === "string" ? parseInt(String(body.order), 10) : 0;
     const orderNum = Number.isFinite(order) ? order : 0;
 
+    const accessType: AccessType =
+      body.accessType === "free" || body.accessType === "free-after-login" || body.accessType === "paid"
+        ? body.accessType
+        : Boolean(body.isFree)
+          ? "free"
+          : "paid";
+    const isFree = accessType !== "paid";
+
     const paragraph = await Paragraph.create({
       title: String(body.title),
-      isFree: Boolean(body.isFree),
+      isFree,
+      accessType,
       language: body.language as "english" | "marathi",
       category: body.category as Category,
       order: orderNum,
@@ -312,7 +321,16 @@ router.put("/paragraphs/:id", requireAdmin, async (req: Request, res: Response) 
     const body = req.body as Record<string, unknown>;
     const update: Record<string, unknown> = {};
     if (body.title !== undefined) update.title = String(body.title);
-    if (body.isFree !== undefined) update.isFree = Boolean(body.isFree);
+    if (body.accessType !== undefined) {
+      const at = body.accessType as string;
+      if (at === "free" || at === "free-after-login" || at === "paid") {
+        update.accessType = at;
+        update.isFree = at !== "paid";
+      }
+    } else if (body.isFree !== undefined) {
+      update.isFree = Boolean(body.isFree);
+      update.accessType = body.isFree ? "free" : "paid";
+    }
     if (body.language !== undefined) update.language = body.language;
     if (body.category !== undefined) update.category = body.category;
     if (body.order !== undefined) {

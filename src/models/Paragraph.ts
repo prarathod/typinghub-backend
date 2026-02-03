@@ -2,10 +2,12 @@ import mongoose, { Schema, type HydratedDocument } from "mongoose";
 
 export type Language = "english" | "marathi";
 export type Category = "lessons" | "court-exam" | "mpsc";
+export type AccessType = "free" | "free-after-login" | "paid";
 
 export type IParagraph = {
   title: string;
   isFree: boolean;
+  accessType: AccessType;
   language: Language;
   category: Category;
   order: number;
@@ -29,6 +31,11 @@ const paragraphSchema = new Schema<IParagraph>({
     type: String,
     required: true,
     enum: ["lessons", "court-exam", "mpsc"]
+  },
+  accessType: {
+    type: String,
+    enum: ["free", "free-after-login", "paid"],
+    default: "free"
   },
   order: { type: Number, default: 0 },
   solvedCount: { type: Number, default: 0 },
