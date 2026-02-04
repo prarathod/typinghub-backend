@@ -34,11 +34,19 @@ async function userHasAccessToParagraph(
   );
   if (!userId) return false;
   if (!productId) return true;
+  const now = new Date();
   const sub = await Subscription.findOne({ userId, productId }).lean();
-  if (sub) return true;
+  if (sub) {
+    if (!sub.validUntil) return true;
+    if (sub.validUntil > now) return true;
+    return false;
+  }
   if (isPaidUser) {
-    const count = await Subscription.countDocuments({ userId });
-    if (count === 0) return true;
+    const activeCount = await Subscription.countDocuments({
+      userId,
+      $or: [{ validUntil: { $exists: false } }, { validUntil: null }, { validUntil: { $gt: now } }]
+    });
+    if (activeCount === 0) return true;
   }
   return false;
 }

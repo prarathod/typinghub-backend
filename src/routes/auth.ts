@@ -47,12 +47,19 @@ router.get(
 
 router.get("/me", requireAuth, async (req, res) => {
   const user = req.user as UserDocument;
+  const now = new Date();
   const subscriptions = await Subscription.find({ userId: user._id })
-    .select("productId")
+    .select("productId validUntil")
     .lean();
-  let subscriptionIds = subscriptions.map((s) => s.productId as string);
-  if (user.isPaid && subscriptionIds.length === 0) {
-    subscriptionIds = [...ALL_PRODUCT_IDS];
+  const subscriptionItems = subscriptions.map((s) => ({
+    productId: s.productId as string,
+    validUntil: s.validUntil ? s.validUntil.toISOString() : null
+  }));
+  let activeProductIds = subscriptionItems
+    .filter((s) => !s.validUntil || new Date(s.validUntil) > now)
+    .map((s) => s.productId);
+  if (user.isPaid && activeProductIds.length === 0 && subscriptionItems.length === 0) {
+    activeProductIds = [...ALL_PRODUCT_IDS];
   }
   res.json({
     user: {
@@ -62,7 +69,8 @@ router.get("/me", requireAuth, async (req, res) => {
       avatarUrl: user.avatarUrl,
       isPaid: user.isPaid
     },
-    subscriptions: subscriptionIds
+    subscriptions: subscriptionItems,
+    activeProductIds
   });
 });
 

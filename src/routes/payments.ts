@@ -13,7 +13,7 @@ import {
 import { requireAuth } from "../middleware/auth";
 import User from "../models/User";
 import type { UserDocument } from "../models/User";
-import Subscription from "../models/Subscription";
+import Subscription, { SUBSCRIPTION_VALIDITY_DAYS } from "../models/Subscription";
 
 const router = Router();
 const CURRENCY = "INR";
@@ -122,6 +122,7 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
     }
 
     const user = req.user as UserDocument;
+    const validUntil = new Date(Date.now() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
 
     await Promise.all(
       productIds.map((productId) =>
@@ -129,7 +130,8 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
           userId: user._id,
           productId: productId as ProductId,
           razorpayOrderId: razorpay_order_id,
-          razorpayPaymentId: razorpay_payment_id
+          razorpayPaymentId: razorpay_payment_id,
+          validUntil
         })
       )
     );
@@ -140,9 +142,12 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
     );
 
     const subscriptions = await Subscription.find({ userId: user._id })
-      .select("productId")
+      .select("productId validUntil")
       .lean();
-    const subscriptionIds = subscriptions.map((s) => s.productId as string);
+    const subscriptionItems = subscriptions.map((s) => ({
+      productId: s.productId as string,
+      validUntil: s.validUntil ? s.validUntil.toISOString() : null
+    }));
 
     const updated = await User.findById(user._id).lean();
     if (!updated) {
@@ -164,7 +169,7 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
         avatarUrl: u.avatarUrl,
         isPaid: true
       },
-      subscriptions: subscriptionIds
+      subscriptions: subscriptionItems
     });
   } catch (err) {
     console.error("Verify payment error:", err);

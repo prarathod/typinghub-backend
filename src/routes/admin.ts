@@ -5,7 +5,7 @@ import { PRODUCTS, type ProductId } from "../config/products";
 import { requireAdmin } from "../middleware/adminAuth";
 import Paragraph, { type AccessType, type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
-import Subscription from "../models/Subscription";
+import Subscription, { SUBSCRIPTION_VALIDITY_DAYS } from "../models/Subscription";
 import User from "../models/User";
 import { signAdminToken } from "../utils/adminJwt";
 
@@ -151,12 +151,18 @@ router.get("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    const subs = await Subscription.find({ userId }).select("productId razorpayOrderId").lean();
+    const subs = await Subscription.find({ userId })
+      .select("productId razorpayOrderId validUntil")
+      .lean();
     const productIds = subs.map((s) => s.productId as string);
     const adminGrantedProductIds = subs
       .filter((s) => s.razorpayOrderId === ADMIN_GRANT_ORDER_ID)
       .map((s) => s.productId as string);
-    res.json({ productIds, adminGrantedProductIds, products: PRODUCTS });
+    const subscriptionItems = subs.map((s) => ({
+      productId: s.productId as string,
+      validUntil: s.validUntil ? s.validUntil.toISOString() : null
+    }));
+    res.json({ productIds, adminGrantedProductIds, products: PRODUCTS, subscriptions: subscriptionItems });
   } catch (err) {
     console.error("Admin user subscriptions error:", err);
     res.status(500).json({ message: "Failed to fetch user subscriptions" });
@@ -181,6 +187,7 @@ router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
     const validProductIds = PRODUCTS.map((p) => p.productId);
     const toGrant = [...new Set(productIds.filter((pid) => validProductIds.includes(pid as ProductId)))];
 
+    const validUntil = new Date(Date.now() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
     await Subscription.deleteMany({ userId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
     for (const productId of toGrant) {
       const existing = await Subscription.findOne({ userId, productId }).lean();
@@ -188,7 +195,8 @@ router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
         await Subscription.create({
           userId,
           productId: productId as ProductId,
-          razorpayOrderId: ADMIN_GRANT_ORDER_ID
+          razorpayOrderId: ADMIN_GRANT_ORDER_ID,
+          validUntil
         });
       }
     }
