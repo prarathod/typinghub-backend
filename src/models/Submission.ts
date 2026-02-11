@@ -14,6 +14,11 @@ export type ISubmission = {
   incorrectWords: string[];
   correctWordsCount: number;
   userInput: string;
+  /** Optional: for genuine-candidate ranking (completion ratio, score). */
+  omittedWordsCount?: number;
+  totalPassageWords?: number;
+  /** Score = (completionRatio²) × (accuracy/100) × wpm. Set when submission is genuine (R ≥ 0.9, accuracy ≥ 50). */
+  rankingScore?: number;
   createdAt: Date;
 };
 
@@ -33,6 +38,9 @@ const submissionSchema = new Schema<ISubmission>({
   incorrectWords: { type: [String], default: [] },
   correctWordsCount: { type: Number, required: true },
   userInput: { type: String, required: true },
+  omittedWordsCount: { type: Number },
+  totalPassageWords: { type: Number },
+  rankingScore: { type: Number },
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -203,6 +203,39 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
 
 const LEADERBOARD_LIMIT = 10;
 const MIN_ACCURACY_LEADERBOARD = 50;
+/** Minimum completion ratio (words typed / total passage words) to count as genuine. */
+const MIN_COMPLETION_RATIO = 0.9;
+
+/**
+ * Genuine-candidate ranking score: (completionRatio²) × (accuracy/100) × wpm.
+ * Only set when completionRatio >= MIN_COMPLETION_RATIO and accuracy >= MIN_ACCURACY_LEADERBOARD.
+ */
+function computeRankingScore(
+  wordsTyped: number,
+  totalPassageWords: number,
+  accuracy: number,
+  wpm: number
+): number {
+  const R = totalPassageWords > 0 ? wordsTyped / totalPassageWords : 1;
+  if (R < MIN_COMPLETION_RATIO || accuracy < MIN_ACCURACY_LEADERBOARD) return 0;
+  return (R * R) * (accuracy / 100) * wpm;
+}
+
+type SubmissionWithScore = {
+  _id: unknown;
+  userId?: unknown;
+  timeTakenSeconds: number;
+  wpm: number;
+  accuracy: number;
+  createdAt?: Date;
+  rankingScore?: number | null;
+  userName?: string | null;
+};
+
+function getScore(s: SubmissionWithScore): number {
+  if (s.rankingScore != null && s.rankingScore > 0) return s.rankingScore;
+  return (s.accuracy / 100) * s.wpm;
+}
 
 router.get(
   "/:id/submissions/leaderboard",
@@ -222,25 +255,41 @@ router.get(
         return res.status(404).json({ message: "Paragraph not found." });
       }
 
-      const filter: Record<string, unknown> = {
-        paragraphId: new mongoose.Types.ObjectId(id),
+      const paragraphObjId = new mongoose.Types.ObjectId(id);
+      const uid = (req.user as UserDocument | undefined)?._id;
+
+      const filter = {
+        paragraphId: paragraphObjId,
         accuracy: { $gte: MIN_ACCURACY_LEADERBOARD }
       };
 
-      const uid = (req.user as UserDocument | undefined)?._id;
-      const top = await Submission.find(filter)
-        .sort({ timeTakenSeconds: 1 })
-        .limit(LEADERBOARD_LIMIT)
+      const allCandidates = await Submission.find(filter)
         .populate("userId", "name")
         .lean();
 
+      const withScore = (allCandidates as SubmissionWithScore[]).map((s) => ({
+        ...s,
+        _computedScore: getScore(s)
+      }));
+
+      const genuine = withScore.filter((s) => s._computedScore > 0);
+      const sorted = genuine.sort(
+        (a, b) => (b._computedScore as number) - (a._computedScore as number)
+      );
+      const top = sorted.slice(0, LEADERBOARD_LIMIT);
+
       const leaderboard = top.map((s, i) => {
         const sid = (s as { userId?: { _id?: unknown } }).userId;
-        const userIdMatch = sid && typeof sid === "object" && "_id" in sid &&
-          uid && String((sid as { _id: unknown })._id) === String(uid);
+        const userIdMatch =
+          sid &&
+          typeof sid === "object" &&
+          "_id" in sid &&
+          uid &&
+          String((sid as { _id: unknown })._id) === String(uid);
         return {
           rank: i + 1,
-          userName: (s.userId as { name?: string } | null)?.name ?? "Anonymous",
+          userName:
+            (s.userId as { name?: string } | null)?.name ?? "Anonymous",
           timeTakenSeconds: s.timeTakenSeconds,
           wpm: s.wpm,
           accuracy: s.accuracy,
@@ -252,28 +301,34 @@ router.get(
       let yourRank: number | null = null;
       let yourBest: (typeof leaderboard)[0] | null = null;
       if (uid) {
-        const best = await Submission.findOne({
-          paragraphId: new mongoose.Types.ObjectId(id),
-          userId: uid
-        })
-          .sort({ timeTakenSeconds: 1 })
-          .populate("userId", "name")
-          .lean();
-        if (best) {
+        const userSubs = withScore.filter(
+          (s) =>
+            (s as { userId?: { _id?: unknown } }).userId &&
+            String(
+              ((s as { userId?: { _id?: unknown } }).userId as { _id: unknown })
+                ?._id
+            ) === String(uid)
+        );
+        if (userSubs.length > 0) {
+          const best = userSubs.reduce((a, b) =>
+            (a._computedScore as number) >= (b._computedScore as number)
+              ? a
+              : b
+          );
           yourBest = {
             rank: 0,
-            userName: (best.userId as { name?: string } | null)?.name ?? "You",
+            userName:
+              (best.userId as { name?: string } | null)?.name ?? "You",
             timeTakenSeconds: best.timeTakenSeconds,
             wpm: best.wpm,
             accuracy: best.accuracy,
             createdAt: (best as { createdAt?: Date }).createdAt,
             isYou: true
           };
-          const betterCount = await Submission.countDocuments({
-            paragraphId: new mongoose.Types.ObjectId(id),
-            accuracy: { $gte: MIN_ACCURACY_LEADERBOARD },
-            timeTakenSeconds: { $lt: best.timeTakenSeconds }
-          });
+          const bestScore = best._computedScore as number;
+          const betterCount = withScore.filter(
+            (s) => (s._computedScore as number) > bestScore
+          ).length;
           yourRank = betterCount + 1;
         }
       }
@@ -405,22 +460,47 @@ router.post(
         }
       }
 
+      const wordsTyped = Number(body.wordsTyped);
+      const accuracy = Number(body.accuracy);
+      const wpm = Number(body.wpm);
+      const totalPassageWords =
+        body.totalPassageWords != null ? Number(body.totalPassageWords) : undefined;
+      const omittedWordsCount =
+        body.omittedWordsCount != null ? Number(body.omittedWordsCount) : undefined;
+
+      let rankingScore: number | undefined;
+      if (
+        totalPassageWords != null &&
+        totalPassageWords > 0 &&
+        omittedWordsCount != null
+      ) {
+        rankingScore = computeRankingScore(
+          wordsTyped,
+          totalPassageWords,
+          accuracy,
+          wpm
+        );
+      }
+
       const submission = await Submission.create({
         paragraphId: new mongoose.Types.ObjectId(id),
         userId: (req.user as UserDocument | undefined)?._id,
         timeTakenSeconds: Number(body.timeTakenSeconds),
-        accuracy: Number(body.accuracy),
+        accuracy,
         totalKeystrokes: Number(body.totalKeystrokes),
         backspaceCount: Number(body.backspaceCount),
-        wordsTyped: Number(body.wordsTyped),
-        wpm: Number(body.wpm),
+        wordsTyped,
+        wpm,
         kpm: Number(body.kpm),
         incorrectWordsCount: Number(body.incorrectWordsCount),
         incorrectWords: Array.isArray(body.incorrectWords)
           ? (body.incorrectWords as string[])
           : [],
         correctWordsCount: Number(body.correctWordsCount),
-        userInput: String(body.userInput)
+        userInput: String(body.userInput),
+        ...(omittedWordsCount != null && { omittedWordsCount }),
+        ...(totalPassageWords != null && { totalPassageWords }),
+        ...(rankingScore !== undefined && { rankingScore })
       });
 
       res.status(201).json({ _id: submission._id.toString() });
