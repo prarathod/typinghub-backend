@@ -25,18 +25,23 @@ router.get(
     session: false,
     failureRedirect: `${env.CLIENT_URL}/?auth=failed`
   }),
-  (req, res) => {
+  async (req, res) => {
     const user = req.user as UserDocument | undefined;
     if (!user) {
       return res.redirect(`${env.CLIENT_URL}/?auth=failed`);
     }
 
+    // Increment session version so previous tokens (other devices) become invalid — one device at a time
+    user.sessionVersion = (user.sessionVersion ?? 0) + 1;
+    await user.save();
+
     const token = signToken(user);
+    const maxAgeMs = 1000 * 60 * 60 * 24 * 7; // 7 days
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 1000 * 60 * 60 * 24 * 7
+      maxAge: maxAgeMs
     });
 
     const redirectUrl = new URL("/auth/callback", env.CLIENT_URL);

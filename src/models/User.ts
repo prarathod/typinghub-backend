@@ -6,6 +6,8 @@ export type IUser = {
   name: string;
   avatarUrl?: string;
   isPaid: boolean;
+  /** Incremented on each login; token must match to allow one device at a time. */
+  sessionVersion: number;
   createdAt: Date;
 };
 
@@ -17,6 +19,7 @@ const userSchema = new Schema<IUser>({
   name: { type: String, required: true },
   avatarUrl: { type: String },
   isPaid: { type: Boolean, default: false },
+  sessionVersion: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 

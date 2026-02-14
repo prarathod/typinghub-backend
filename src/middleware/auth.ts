@@ -1,12 +1,15 @@
 import type { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 
-import { env } from "../config/env";
 import User from "../models/User";
+import { verifyToken, type JwtPayload } from "../utils/jwt";
 
-type JwtPayload = {
-  sub: string;
-};
+const UNAUTHORIZED_MESSAGE = "Unauthorized";
+
+/** Token valid only if sessionVersion in JWT matches user's current sessionVersion (one device at a time). */
+function isSessionValid(payload: JwtPayload, sessionVersion: number): boolean {
+  const tokenVersion = payload.v ?? 0;
+  return tokenVersion === sessionVersion;
+}
 
 export const requireAuth = async (
   req: Request,
@@ -19,21 +22,21 @@ export const requireAuth = async (
     (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined);
 
   if (!token) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: UNAUTHORIZED_MESSAGE });
   }
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    const payload = verifyToken(token);
     const user = await User.findById(payload.sub);
 
-    if (!user) {
-      return res.status(401).json({ message: "Unauthorized" });
+    if (!user || !isSessionValid(payload, user.sessionVersion ?? 0)) {
+      return res.status(401).json({ message: UNAUTHORIZED_MESSAGE });
     }
 
     req.user = user;
     return next();
-  } catch (error) {
-    return res.status(401).json({ message: "Unauthorized" });
+  } catch {
+    return res.status(401).json({ message: UNAUTHORIZED_MESSAGE });
   }
 };
 
@@ -50,11 +53,13 @@ export const optionalAuth = async (
   if (!token) return next();
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    const payload = verifyToken(token);
     const user = await User.findById(payload.sub);
-    if (user) req.user = user;
+    if (user && isSessionValid(payload, user.sessionVersion ?? 0)) {
+      req.user = user;
+    }
   } catch {
-    /* ignore */
+    /* ignore invalid or expired token */
   }
   next();
 };
