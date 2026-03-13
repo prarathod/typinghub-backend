@@ -181,13 +181,17 @@ router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    const body = req.body as { productIds?: unknown };
+    const body = req.body as { productIds?: unknown; days?: unknown };
     const rawIds = Array.isArray(body.productIds) ? body.productIds : [];
     const productIds = rawIds.filter((id): id is string => typeof id === "string");
     const validProductIds = PRODUCTS.map((p) => p.productId);
     const toGrant = [...new Set(productIds.filter((pid) => validProductIds.includes(pid as ProductId)))];
 
-    const validUntil = new Date(Date.now() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
+    const parsedDays = Number(body.days);
+    const days = Number.isFinite(parsedDays) && parsedDays >= 1
+      ? Math.min(3650, Math.floor(parsedDays))
+      : SUBSCRIPTION_VALIDITY_DAYS;
+    const validUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     await Subscription.deleteMany({ userId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
     for (const productId of toGrant) {
       const existing = await Subscription.findOne({ userId, productId }).lean();
