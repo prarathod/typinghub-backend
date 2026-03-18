@@ -1,6 +1,23 @@
 import type { Category } from "../models/Paragraph";
 import type { Language } from "../models/Paragraph";
 
+// Sale window in IST (UTC+5:30)
+const SALE_START_UTC = new Date("2026-03-19T03:30:00Z"); // 19 Mar 09:00 AM IST
+const SALE_END_UTC   = new Date("2026-03-20T18:29:00Z"); // 20 Mar 11:59 PM IST
+
+const SALE_AMOUNT_PAISE = 5900; // ₹59 per course during sale
+
+const SALE_BUNDLE_TOTAL_PAISE: Record<number, number> = {
+  2:  9900, // ₹99
+  3: 13900, // ₹139
+  4: 17900  // ₹179
+};
+
+export function isSaleActive(): boolean {
+  const now = new Date();
+  return now >= SALE_START_UTC && now <= SALE_END_UTC;
+}
+
 export type ProductId =
   | "english-court"
   | "english-mpsc"
@@ -77,6 +94,12 @@ const BUNDLE_TOTAL_PAISE: Record<number, number | undefined> = {
 export function getBundleAmountPaise(productIds: string[]): number {
   const unique = [...new Set(productIds)];
   if (unique.length === 0) return 0;
+  const sale = isSaleActive();
+  if (sale) {
+    const fixedSaleTotal = SALE_BUNDLE_TOTAL_PAISE[unique.length];
+    if (fixedSaleTotal !== undefined) return fixedSaleTotal;
+    return unique.length * SALE_AMOUNT_PAISE;
+  }
   const fullSum = unique.reduce((sum, id) => {
     const p = getProductById(id);
     return sum + (p ? p.amountPaise : 0);
@@ -87,8 +110,11 @@ export function getBundleAmountPaise(productIds: string[]): number {
 }
 
 export function getBundleRules(): { count: number; amountPaise: number }[] {
+  const sale = isSaleActive();
   return [2, 3, 4].map((count) => ({
     count,
-    amountPaise: BUNDLE_TOTAL_PAISE[count] ?? 0
+    amountPaise: sale
+      ? (SALE_BUNDLE_TOTAL_PAISE[count] ?? count * SALE_AMOUNT_PAISE)
+      : (BUNDLE_TOTAL_PAISE[count] ?? 0)
   }));
 }

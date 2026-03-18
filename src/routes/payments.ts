@@ -7,6 +7,7 @@ import {
   getBundleAmountPaise,
   getBundleRules,
   getProductById,
+  isSaleActive,
   PRODUCTS,
   type ProductId
 } from "../config/products";
@@ -28,15 +29,21 @@ const getRazorpay = () =>
   });
 
 router.get("/products", (_req: Request, res: Response) => {
+  const sale = isSaleActive();
+  const SALE_AMOUNT_PAISE = 5900;
   res.json({
     products: PRODUCTS.map((p) => ({
       productId: p.productId,
       name: p.name,
-      amountPaise: p.amountPaise,
+      amountPaise: sale ? SALE_AMOUNT_PAISE : p.amountPaise,
+      originalAmountPaise: p.amountPaise,
       language: p.language,
       category: p.category
     })),
-    bundleRules: getBundleRules()
+    bundleRules: getBundleRules(),
+    sale: sale
+      ? { active: true, saleEndUtc: "2026-03-20T18:29:00Z" }
+      : { active: false }
   });
 });
 
