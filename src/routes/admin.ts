@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { PRODUCTS, type ProductId } from "../config/products";
 import { requireAdmin } from "../middleware/adminAuth";
 import Paragraph, { type AccessType, type Category } from "../models/Paragraph";
+import PaymentLog from "../models/PaymentLog";
 import Submission from "../models/Submission";
 import Subscription, { SUBSCRIPTION_VALIDITY_DAYS } from "../models/Subscription";
 import User from "../models/User";
@@ -192,18 +193,31 @@ router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
       ? Math.min(3650, Math.floor(parsedDays))
       : SUBSCRIPTION_VALIDITY_DAYS;
     const validUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-    await Subscription.deleteMany({ userId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
+
+    // Remove any subscriptions (from any source) for courses not in the desired list
+    await Subscription.deleteMany({ userId, productId: { $nin: toGrant } });
+
+    // For each desired course, skip if a payment-based sub already exists; otherwise upsert an admin-grant
     for (const productId of toGrant) {
       const existing = await Subscription.findOne({ userId, productId }).lean();
-      if (!existing) {
-        await Subscription.create({
-          userId,
-          productId: productId as ProductId,
-          razorpayOrderId: ADMIN_GRANT_ORDER_ID,
-          validUntil
-        });
+      if (existing && existing.razorpayOrderId !== ADMIN_GRANT_ORDER_ID) {
+        // Payment-based sub — keep as-is
+        continue;
       }
+      // Delete stale admin-grant (refreshes validUntil) then re-create
+      await Subscription.deleteOne({ userId, productId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
+      await Subscription.create({
+        userId,
+        productId: productId as ProductId,
+        razorpayOrderId: ADMIN_GRANT_ORDER_ID,
+        validUntil
+      });
     }
+
+    // Keep isPaid in sync: false when no courses remain, so the legacy fallback in
+    // access checks doesn't fire and grant unintended access after revocation.
+    await User.updateOne({ _id: userId }, { $set: { isPaid: toGrant.length > 0 } });
+
     const subs = await Subscription.find({ userId }).select("productId").lean();
     res.json({ productIds: subs.map((s) => s.productId as string) });
   } catch (err) {
@@ -529,6 +543,35 @@ router.get("/stats", requireAdmin, async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Admin stats error:", err);
     res.status(500).json({ message: "Failed to fetch stats" });
+  }
+});
+
+// ── Payment Logs ─────────────────────────────────────────────────────────────
+
+router.get("/payment-logs", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { email, eventType, orderId, page: pageStr, limit: limitStr } = req.query as Record<string, string | undefined>;
+    const page = Math.max(1, parseInt(pageStr ?? "1", 10));
+    const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(limitStr ?? "50", 10)));
+
+    const filter: Record<string, unknown> = {};
+    if (email) filter["userEmail"] = { $regex: email, $options: "i" };
+    if (eventType) filter["eventType"] = eventType;
+    if (orderId) filter["razorpayOrderId"] = { $regex: orderId, $options: "i" };
+
+    const [items, total] = await Promise.all([
+      PaymentLog.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      PaymentLog.countDocuments(filter)
+    ]);
+
+    res.json({ items, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    console.error("Admin payment-logs error:", err);
+    res.status(500).json({ message: "Failed to fetch payment logs" });
   }
 });
 

@@ -12,6 +12,7 @@ import {
   type ProductId
 } from "../config/products";
 import { requireAuth } from "../middleware/auth";
+import PaymentLog from "../models/PaymentLog";
 import User from "../models/User";
 import type { UserDocument } from "../models/User";
 import Subscription, { SUBSCRIPTION_VALIDITY_DAYS } from "../models/Subscription";
@@ -80,6 +81,15 @@ router.post("/create-order", requireAuth, async (req: Request, res: Response) =>
 
     pendingOrders.set(order.id, productIds);
 
+    PaymentLog.create({
+      eventType: "order_created",
+      userId: user._id,
+      userEmail: user.email,
+      razorpayOrderId: order.id,
+      productIds,
+      amountPaise
+    }).catch(() => {/* non-blocking */});
+
     res.status(201).json({
       orderId: order.id,
       amount: amountPaise,
@@ -93,6 +103,7 @@ router.post("/create-order", requireAuth, async (req: Request, res: Response) =>
 });
 
 router.post("/verify", requireAuth, async (req: Request, res: Response) => {
+  const user = req.user as UserDocument;
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body as {
@@ -111,6 +122,16 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
       });
     }
 
+    PaymentLog.create({
+      eventType: "verify_started",
+      userId: user._id,
+      userEmail: user.email,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      productIds: [],
+      amountPaise: 0
+    }).catch(() => {/* non-blocking */});
+
     const sign = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expected = crypto
       .createHmac("sha256", env.RAZORPAY_KEY_SECRET)
@@ -118,6 +139,15 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
       .digest("hex");
 
     if (expected !== razorpay_signature) {
+      PaymentLog.create({
+        eventType: "verify_signature_failed",
+        userId: user._id,
+        userEmail: user.email,
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        productIds: [],
+        amountPaise: 0
+      }).catch(() => {/* non-blocking */});
       return res.status(400).json({ message: "Payment verification failed." });
     }
 
@@ -128,7 +158,6 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Order not found or already processed." });
     }
 
-    const user = req.user as UserDocument;
     const validUntil = new Date(Date.now() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
 
     await Promise.all(
@@ -147,6 +176,16 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
       { _id: user._id },
       { $set: { isPaid: true } }
     );
+
+    PaymentLog.create({
+      eventType: "access_granted",
+      userId: user._id,
+      userEmail: user.email,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      productIds,
+      amountPaise: 0
+    }).catch(() => {/* non-blocking */});
 
     const subscriptions = await Subscription.find({ userId: user._id })
       .select("productId validUntil")
@@ -180,6 +219,20 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("Verify payment error:", err);
+    const { razorpay_order_id, razorpay_payment_id } = (req.body ?? {}) as {
+      razorpay_order_id?: string;
+      razorpay_payment_id?: string;
+    };
+    PaymentLog.create({
+      eventType: "verify_error",
+      userId: user?._id,
+      userEmail: user?.email,
+      razorpayOrderId: razorpay_order_id ?? "unknown",
+      razorpayPaymentId: razorpay_payment_id,
+      productIds: [],
+      amountPaise: 0,
+      meta: { error: err instanceof Error ? err.message : String(err) }
+    }).catch(() => {/* non-blocking */});
     res.status(500).json({ message: "Payment verification failed." });
   }
 });

@@ -41,12 +41,11 @@ async function userHasAccessToParagraph(
     if (sub.validUntil > now) return true;
     return false;
   }
+  // Legacy fallback: users marked isPaid before the subscription system was introduced
+  // have no subscription records at all. Only grant blanket access in that case.
   if (isPaidUser) {
-    const activeCount = await Subscription.countDocuments({
-      userId,
-      $or: [{ validUntil: { $exists: false } }, { validUntil: null }, { validUntil: { $gt: now } }]
-    });
-    if (activeCount === 0) return true;
+    const totalCount = await Subscription.countDocuments({ userId });
+    if (totalCount === 0) return true;
   }
   return false;
 }
