@@ -203,7 +203,7 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
 const LEADERBOARD_LIMIT = 10;
 const MIN_ACCURACY_LEADERBOARD = 50;
 /** Minimum completion ratio (words typed / total passage words) to count as genuine. */
-const MIN_COMPLETION_RATIO = 0.9;
+const MIN_COMPLETION_RATIO = 0.7;
 
 /**
  * Genuine-candidate ranking score: (completionRatio²) × (accuracy/100) × wpm.
@@ -228,11 +228,21 @@ type SubmissionWithScore = {
   accuracy: number;
   createdAt?: Date;
   rankingScore?: number | null;
+  wordsTyped?: number | null;
+  totalPassageWords?: number | null;
   userName?: string | null;
 };
 
 function getScore(s: SubmissionWithScore): number {
+  // rankingScore = 0 means it explicitly failed the completion/accuracy check — exclude.
+  if (s.rankingScore === 0) return 0;
+  // rankingScore > 0 means it already passed all checks — use it directly.
   if (s.rankingScore != null && s.rankingScore > 0) return s.rankingScore;
+  // Legacy submissions without rankingScore: apply completion check if data is available.
+  if (s.wordsTyped != null && s.totalPassageWords != null && s.totalPassageWords > 0) {
+    const R = s.wordsTyped / s.totalPassageWords;
+    if (R < MIN_COMPLETION_RATIO) return 0;
+  }
   return (s.accuracy / 100) * s.wpm;
 }
 

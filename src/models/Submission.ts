@@ -17,7 +17,7 @@ export type ISubmission = {
   /** Optional: for genuine-candidate ranking (completion ratio, score). */
   omittedWordsCount?: number;
   totalPassageWords?: number;
-  /** Score = (completionRatio²) × (accuracy/100) × wpm. Set when submission is genuine (R ≥ 0.9, accuracy ≥ 50). */
+  /** Score = (completionRatio²) × (accuracy/100) × wpm. Set when submission is genuine (R ≥ 0.7, accuracy ≥ 50). */
   rankingScore?: number;
   createdAt: Date;
 };
