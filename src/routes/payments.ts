@@ -158,18 +158,32 @@ router.post("/verify", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Order not found or already processed." });
     }
 
-    const validUntil = new Date(Date.now() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
-
     await Promise.all(
-      productIds.map((productId) =>
-        Subscription.create({
+      productIds.map(async (productId) => {
+        const existing = await Subscription.findOne(
+          { userId: user._id, productId },
+          null,
+          { sort: { validUntil: -1 } }
+        ).lean();
+
+        const now = new Date();
+        const baseDate =
+          existing?.validUntil && existing.validUntil > now
+            ? existing.validUntil
+            : now;
+        const validUntil = new Date(
+          baseDate.getTime() + SUBSCRIPTION_VALIDITY_DAYS * 24 * 60 * 60 * 1000
+        );
+
+        await Subscription.deleteMany({ userId: user._id, productId });
+        await Subscription.create({
           userId: user._id,
           productId: productId as ProductId,
           razorpayOrderId: razorpay_order_id,
           razorpayPaymentId: razorpay_payment_id,
           validUntil
-        })
-      )
+        });
+      })
     );
 
     await User.updateOne(

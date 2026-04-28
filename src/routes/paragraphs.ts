@@ -35,7 +35,7 @@ async function userHasAccessToParagraph(
   if (!userId) return false;
   if (!productId) return true;
   const now = new Date();
-  const sub = await Subscription.findOne({ userId, productId }).lean();
+  const sub = await Subscription.findOne({ userId, productId }, null, { sort: { validUntil: -1 } }).lean();
   if (sub) {
     if (!sub.validUntil) return true;
     if (sub.validUntil > now) return true;
