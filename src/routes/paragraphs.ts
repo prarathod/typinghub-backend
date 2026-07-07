@@ -233,17 +233,23 @@ type SubmissionWithScore = {
   userName?: string | null;
 };
 
-function getScore(s: SubmissionWithScore): number {
-  // rankingScore = 0 means it explicitly failed the completion/accuracy check — exclude.
-  if (s.rankingScore === 0) return 0;
-  // rankingScore > 0 means it already passed all checks — use it directly.
-  if (s.rankingScore != null && s.rankingScore > 0) return s.rankingScore;
-  // Legacy submissions without rankingScore: apply completion check if data is available.
+/**
+ * Returns true if the submission passes the quality gate.
+ * Uses rankingScore when available (new submissions), otherwise falls back
+ * to a completion-ratio check on raw fields (legacy submissions).
+ * Avoids mixing incompatible composite scores so time-based sorting is consistent.
+ */
+function isGenuineSubmission(s: SubmissionWithScore): boolean {
+  // rankingScore = 0 → explicitly failed quality check at submit time
+  if (s.rankingScore === 0) return false;
+  // rankingScore > 0 → passed all checks at submit time
+  if (s.rankingScore != null && s.rankingScore > 0) return true;
+  // Legacy submission without stored rankingScore: check completion ratio if available
   if (s.wordsTyped != null && s.totalPassageWords != null && s.totalPassageWords > 0) {
     const R = s.wordsTyped / s.totalPassageWords;
-    if (R < MIN_COMPLETION_RATIO) return 0;
+    if (R < MIN_COMPLETION_RATIO) return false;
   }
-  return (s.accuracy / 100) * s.wpm;
+  return true;
 }
 
 router.get(
@@ -276,16 +282,16 @@ router.get(
         .populate("userId", "name")
         .lean();
 
-      const withScore = (allCandidates as SubmissionWithScore[]).map((s) => ({
-        ...s,
-        _computedScore: getScore(s)
-      }));
+      const genuine = (allCandidates as SubmissionWithScore[]).filter(isGenuineSubmission);
 
-      const genuine = withScore.filter((s) => s._computedScore > 0);
-      const sorted = genuine.sort(
-        (a, b) => (b._computedScore as number) - (a._computedScore as number)
-      );
-      const top = sorted.slice(0, LEADERBOARD_LIMIT);
+      // Sort fastest first; use accuracy then WPM as tiebreakers
+      genuine.sort((a, b) => {
+        if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+        if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
+        return b.wpm - a.wpm;
+      });
+
+      const top = genuine.slice(0, LEADERBOARD_LIMIT);
 
       const leaderboard = top.map((s, i) => {
         const sid = (s as { userId?: { _id?: unknown } }).userId;
@@ -310,33 +316,30 @@ router.get(
       let yourRank: number | null = null;
       let yourBest: (typeof leaderboard)[0] | null = null;
       if (uid) {
-        const userSubs = withScore.filter(
+        const userGenuine = genuine.filter(
           (s) =>
             (s as { userId?: { _id?: unknown } }).userId &&
             String(
-              ((s as { userId?: { _id?: unknown } }).userId as { _id: unknown })
-                ?._id
+              ((s as { userId?: { _id?: unknown } }).userId as { _id: unknown })?._id
             ) === String(uid)
         );
-        if (userSubs.length > 0) {
-          const best = userSubs.reduce((a, b) =>
-            (a._computedScore as number) >= (b._computedScore as number)
-              ? a
-              : b
+        if (userGenuine.length > 0) {
+          // Best = fastest time among user's genuine submissions
+          const best = userGenuine.reduce((a, b) =>
+            a.timeTakenSeconds <= b.timeTakenSeconds ? a : b
           );
           yourBest = {
             rank: 0,
-            userName:
-              (best.userId as { name?: string } | null)?.name ?? "You",
+            userName: (best.userId as { name?: string } | null)?.name ?? "You",
             timeTakenSeconds: best.timeTakenSeconds,
             wpm: best.wpm,
             accuracy: best.accuracy,
             createdAt: (best as { createdAt?: Date }).createdAt,
             isYou: true
           };
-          const bestScore = best._computedScore as number;
-          const betterCount = withScore.filter(
-            (s) => (s._computedScore as number) > bestScore
+          // Rank = number of genuine submissions with a strictly faster time, + 1
+          const betterCount = genuine.filter(
+            (s) => s.timeTakenSeconds < best.timeTakenSeconds
           ).length;
           yourRank = betterCount + 1;
         }
