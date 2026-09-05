@@ -52,7 +52,7 @@ async function userHasAccessToParagraph(
 
 const router = Router();
 const LANGUAGE_VALUES = ["english", "marathi"] as const;
-const CATEGORY_VALUES = ["lessons", "court-exam", "mpsc"] as const;
+const CATEGORY_VALUES = ["lessons", "court-exam", "mpsc", "high-court"] as const;
 const PRICE_VALUES = ["all", "free", "paid"] as const;
 const MAX_LIMIT = 24;
 const DEFAULT_LIMIT = 24;
@@ -96,7 +96,7 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
 
     if (category && !CATEGORY_VALUES.includes(category as (typeof CATEGORY_VALUES)[number])) {
       return res.status(400).json({
-        message: "Invalid 'category' query. Use 'lessons', 'court-exam', or 'mpsc'."
+        message: "Invalid 'category' query. Use 'lessons', 'court-exam', 'mpsc', or 'high-court'."
       });
     }
 

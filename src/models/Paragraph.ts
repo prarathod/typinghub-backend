@@ -1,7 +1,7 @@
 import mongoose, { Schema, type HydratedDocument } from "mongoose";
 
 export type Language = "english" | "marathi";
-export type Category = "lessons" | "court-exam" | "mpsc";
+export type Category = "lessons" | "court-exam" | "mpsc" | "high-court";
 export type AccessType = "free" | "free-after-login" | "paid";
 
 export type IParagraph = {
@@ -30,7 +30,7 @@ const paragraphSchema = new Schema<IParagraph>({
   category: {
     type: String,
     required: true,
-    enum: ["lessons", "court-exam", "mpsc"]
+    enum: ["lessons", "court-exam", "mpsc", "high-court"]
   },
   accessType: {
     type: String,

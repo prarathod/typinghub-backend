@@ -1,0 +1,32 @@
+---
+description: Git commit/push identity for this repo
+alwaysApply: true
+---
+
+# Git identity for this repository
+
+This repository (`typinghub-backend`) must always be committed and pushed
+using the following git identity, not any other locally configured user:
+
+- **Username:** prarathod
+- **Email:** itsmeprajwal2@gmail.com
+
+## Rules
+
+- Before creating a commit, ensure the local repo config matches the identity
+  above. If it does not, run:
+  ```
+  git config user.name "prarathod"
+  git config user.email "itsmeprajwal2@gmail.com"
+  ```
+  (local config only — never set this globally as a side effect of working in
+  this repo).
+- Push only to the `origin` remote for this repo
+  (`https://github.com/prarathod/typinghub-backend.git`). Authentication for
+  `origin` is already configured locally on this machine — do not prompt for
+  or embed credentials/tokens in any file, commit, or command output.
+- Never commit or print the GitHub access token anywhere in this repo
+  (source files, commit messages, docs, `.cursor/rules/*`, etc.). If a task
+  seems to require the token value itself, stop and ask the user instead of
+  writing it to disk or into the diff.
+- Do not change `origin`'s URL or remove its stored credentials.
