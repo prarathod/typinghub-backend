@@ -41,6 +41,16 @@ export const PRODUCTS: Product[] = [
     category: "court-exam"
   },
   {
+    // Same product as "english-court" (Latest High Court reuses Court Exam's passages) —
+    // listed again under a distinct display name so it appears as its own option in
+    // pricing/bundle UIs. Purchasing either grants the same Subscription/productId.
+    productId: "english-court",
+    name: "English Typing For Court Exam (New Pattern)",
+    amountPaise: 9900,
+    language: "english",
+    category: "court-exam"
+  },
+  {
     productId: "english-mpsc",
     name: "English MPSC Typing Exam",
     amountPaise: 9900,
