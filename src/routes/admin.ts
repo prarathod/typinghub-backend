@@ -182,36 +182,51 @@ router.put("/users/:id/subscriptions", requireAdmin, async (req: Request, res: R
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    const body = req.body as { productIds?: unknown; days?: unknown };
-    const rawIds = Array.isArray(body.productIds) ? body.productIds : [];
-    const productIds = rawIds.filter((id): id is string => typeof id === "string");
+    const body = req.body as { courses?: unknown };
+    const rawCourses = Array.isArray(body.courses) ? body.courses : [];
     const validProductIds = PRODUCTS.map((p) => p.productId);
-    const toGrant = [...new Set(productIds.filter((pid) => validProductIds.includes(pid as ProductId)))];
-
-    const parsedDays = Number(body.days);
-    const days = Number.isFinite(parsedDays) && parsedDays >= 1
-      ? Math.min(3650, Math.floor(parsedDays))
-      : SUBSCRIPTION_VALIDITY_DAYS;
-    const validUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    const parsedCourses = rawCourses
+      .filter((c): c is { productId: unknown; days: unknown } => typeof c === "object" && c !== null)
+      .map((c) => ({ productId: c.productId, days: Number(c.days) }))
+      .filter(
+        (c): c is { productId: ProductId; days: number } =>
+          typeof c.productId === "string" && validProductIds.includes(c.productId as ProductId)
+      );
+    // Dedupe by productId (last one wins) in case of a malformed duplicate payload
+    const courses = [...new Map(parsedCourses.map((c) => [c.productId, c])).values()];
+    const toGrant = courses.map((c) => c.productId);
 
     // Remove any subscriptions (from any source) for courses not in the desired list
     await Subscription.deleteMany({ userId, productId: { $nin: toGrant } });
 
-    // For each desired course, skip if a payment-based sub already exists; otherwise upsert an admin-grant
-    for (const productId of toGrant) {
-      const existing = await Subscription.findOne({ userId, productId }).lean();
-      if (existing && existing.razorpayOrderId !== ADMIN_GRANT_ORDER_ID) {
-        // Payment-based sub — keep as-is
+    const now = new Date();
+    for (const { productId, days } of courses) {
+      const safeDays = Number.isFinite(days) && days > 0 ? Math.min(3650, Math.floor(days)) : 0;
+      const existing = await Subscription.findOne({ userId, productId }, null, { sort: { validUntil: -1 } }).lean();
+
+      if (!existing) {
+        // Brand-new grant: fall back to the standard validity window when no
+        // explicit day count was given, so access isn't immediately expired.
+        const grantDays = safeDays > 0 ? safeDays : SUBSCRIPTION_VALIDITY_DAYS;
+        await Subscription.create({
+          userId,
+          productId,
+          razorpayOrderId: ADMIN_GRANT_ORDER_ID,
+          validUntil: new Date(now.getTime() + grantDays * 24 * 60 * 60 * 1000)
+        });
         continue;
       }
-      // Delete stale admin-grant (refreshes validUntil) then re-create
-      await Subscription.deleteOne({ userId, productId, razorpayOrderId: ADMIN_GRANT_ORDER_ID });
-      await Subscription.create({
-        userId,
-        productId: productId as ProductId,
-        razorpayOrderId: ADMIN_GRANT_ORDER_ID,
-        validUntil
-      });
+
+      if (safeDays === 0) {
+        // Course stays granted; leave its existing expiry untouched.
+        continue;
+      }
+
+      // Extend from the later of now or the current expiry — same rule used
+      // when a real payment renews a subscription (see /verify below).
+      const base = existing.validUntil && existing.validUntil > now ? existing.validUntil : now;
+      const validUntil = new Date(base.getTime() + safeDays * 24 * 60 * 60 * 1000);
+      await Subscription.updateOne({ userId, productId }, { $set: { validUntil } });
     }
 
     // Keep isPaid in sync: false when no courses remain, so the legacy fallback in
