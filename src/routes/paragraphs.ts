@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import mongoose from "mongoose";
 
-import { getProductIdForParagraph } from "../config/products";
+import { getAcceptableProductIdsForParagraph } from "../config/products";
 import { optionalAuth, requireAuth } from "../middleware/auth";
 import Paragraph, { type AccessType, type Category } from "../models/Paragraph";
 import Submission from "../models/Submission";
@@ -28,14 +28,18 @@ async function userHasAccessToParagraph(
   const accessType = getEffectiveAccessType(paragraph);
   if (accessType === "free") return true;
   if (accessType === "free-after-login") return !!userId;
-  const productId = getProductIdForParagraph(
+  const acceptableProductIds = getAcceptableProductIdsForParagraph(
     paragraph.language as "english" | "marathi",
     paragraph.category as Category
   );
   if (!userId) return false;
-  if (!productId) return true;
+  if (acceptableProductIds.length === 0) return true;
   const now = new Date();
-  const sub = await Subscription.findOne({ userId, productId }, null, { sort: { validUntil: -1 } }).lean();
+  const sub = await Subscription.findOne(
+    { userId, productId: { $in: acceptableProductIds } },
+    null,
+    { sort: { validUntil: -1 } }
+  ).lean();
   if (sub) {
     if (!sub.validUntil) return true;
     if (sub.validUntil > now) return true;

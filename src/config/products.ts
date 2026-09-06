@@ -20,6 +20,7 @@ export function isSaleActive(): boolean {
 
 export type ProductId =
   | "english-court"
+  | "english-court-new"
   | "english-mpsc"
   | "marathi-court"
   | "marathi-mpsc";
@@ -41,10 +42,12 @@ export const PRODUCTS: Product[] = [
     category: "court-exam"
   },
   {
-    // Same product as "english-court" (Latest High Court reuses Court Exam's passages) —
-    // listed again under a distinct display name so it appears as its own option in
-    // pricing/bundle UIs. Purchasing either grants the same Subscription/productId.
-    productId: "english-court",
+    // Independently purchasable/tracked product, separate from "english-court".
+    // Both unlock the same underlying Court Exam passages (Latest High Court
+    // reuses them) — see getAcceptableProductIdsForParagraph below — but each
+    // is its own Subscription so admins/pricing UI can grant or select them
+    // independently.
+    productId: "english-court-new",
     name: "English Typing For Court Exam (New Pattern)",
     amountPaise: 9900,
     language: "english",
@@ -79,19 +82,30 @@ export function getProductById(productId: string): Product | undefined {
   return PRODUCT_MAP.get(productId as ProductId);
 }
 
+/** All product IDs whose ownership unlocks a given paragraph. Usually one, but
+ * Court Exam paragraphs are unlocked by either "english-court" or the
+ * separately-sold "english-court-new" ("New Pattern"), since Latest High
+ * Court reuses Court Exam's passages under a second, independent product. */
+export function getAcceptableProductIdsForParagraph(
+  language: Language,
+  category: Category
+): ProductId[] {
+  if (category === "lessons") return [];
+  const key = `${language}-${category}` as const;
+  const map: Record<string, ProductId[]> = {
+    "english-court-exam": ["english-court", "english-court-new"],
+    "english-mpsc": ["english-mpsc"],
+    "marathi-court-exam": ["marathi-court"],
+    "marathi-mpsc": ["marathi-mpsc"]
+  };
+  return map[key] ?? [];
+}
+
 export function getProductIdForParagraph(
   language: Language,
   category: Category
 ): ProductId | null {
-  if (category === "lessons") return null;
-  const key = `${language}-${category}` as const;
-  const map: Record<string, ProductId> = {
-    "english-court-exam": "english-court",
-    "english-mpsc": "english-mpsc",
-    "marathi-court-exam": "marathi-court",
-    "marathi-mpsc": "marathi-mpsc"
-  };
-  return map[key] ?? null;
+  return getAcceptableProductIdsForParagraph(language, category)[0] ?? null;
 }
 
 /** Fixed bundle total in paise. 1 course = ₹99. 2 = ₹149, 3 = ₹199, 4 = ₹249. */
